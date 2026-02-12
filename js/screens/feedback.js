@@ -10,7 +10,7 @@
 // Route :      #/feedback
 // ─────────────────────────────────────────────────────────
 
-import { State } from '../state.js';
+import state from '../state.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -44,6 +44,7 @@ export class FeedbackScreen {
     this._container = null;
     this._sessionData = null;
     this._isProcessing = false;
+    this._navigate = null;
     this._boundHandlers = new Map();
   }
 
@@ -53,7 +54,8 @@ export class FeedbackScreen {
    * Point d'entrée du rendu. Appelé par le routeur SPA.
    * @param {HTMLElement} container — Élément DOM parent dans lequel rendre l'écran.
    */
-  async render(container) {
+  async render(container, params = {}) {
+    this._navigate = params.navigateTo || null;
     this._container = container;
     this._sessionData = await this._loadCurrentSession();
 
@@ -75,6 +77,7 @@ export class FeedbackScreen {
     this._container = null;
     this._sessionData = null;
     this._isProcessing = false;
+    this._navigate = null;
   }
 
   // ── Chargement des Données ─────────────────────────────
@@ -85,10 +88,12 @@ export class FeedbackScreen {
    * (pas de séance, ou feedback déjà donné).
    */
   async _loadCurrentSession() {
-    const user = await State.getUser();
+    const user = state.getProfile();
     if (!user) return null;
 
-    const session = await State.getSession(user.currentWeek, user.currentDay);
+    const session = state.getCurrentSessions().find(
+      (item) => item.dayNumber === user.currentDay
+    );
 
     // Garde : pas de séance, ou feedback déjà enregistré
     if (!session || session.feedback) return null;
@@ -217,7 +222,7 @@ export class FeedbackScreen {
     this._animateSelection(event.currentTarget);
 
     await this._persistFeedback(feedbackId, option.rir);
-    await State.advanceToNextDay();
+    await state.advanceDay();
 
     setTimeout(() => this._navigateTo('dashboard'), REDIRECT_DELAY_MS);
   }
@@ -230,16 +235,20 @@ export class FeedbackScreen {
    * 2. Sur le résumé hebdomadaire (agrégation des feedbacks)
    */
   async _persistFeedback(feedbackId, rir) {
-    const user = await State.getUser();
+    const user = state.getProfile();
     const { currentWeek, currentDay } = user;
 
-    await State.updateSession(currentWeek, currentDay, {
+    await state.saveSession({
+      ...(state.getCurrentSessions().find(
+        (item) => item.weekNumber === currentWeek && item.dayNumber === currentDay
+      ) || {}),
+      weekNumber: currentWeek,
+      dayNumber: currentDay,
       feedback: feedbackId,
       rirEstimated: rir,
       status: 'completed',
     });
 
-    await State.addWeekFeedback(currentWeek, feedbackId, rir);
   }
 
   // ── Contrôle de l'UI ──────────────────────────────────
@@ -294,6 +303,12 @@ export class FeedbackScreen {
   // ── Navigation ─────────────────────────────────────────
 
   _navigateTo(screen) {
+    if (typeof this._navigate === 'function') {
+      this._navigate(screen);
+      return;
+    }
     window.location.hash = `#/${screen}`;
   }
 }
+
+export default new FeedbackScreen();
