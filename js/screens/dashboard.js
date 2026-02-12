@@ -21,7 +21,7 @@
      destroy()                  → Nettoie
    ════════════════════════════════════════════════════════════════ */
 
-import state, { TOPICS } from '../state.js';
+import state, { TOPICS } from '../utils/state.js';
 import engine from '../algorithms/engine.js';
 
 
@@ -812,5 +812,6 @@ const DashboardScreen = {
 
 
 // ── Export ──
+
 
 export default DashboardScreen;
