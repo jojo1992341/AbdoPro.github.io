@@ -22,7 +22,7 @@
      destroy()                  → Nettoie
    ════════════════════════════════════════════════════════════════ */
 
-import state from '../state.js';
+import state from '../utils/state.js';
 import engine from '../algorithms/engine.js';
 import notifications from '../utils/notifications.js';
 
@@ -953,5 +953,6 @@ const TestMaxScreen = {
 
 
 // ── Export ──
+
 
 export default TestMaxScreen;
