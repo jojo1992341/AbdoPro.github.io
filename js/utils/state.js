@@ -61,7 +61,7 @@
      state.getWeekFeedbackSummary()      → Résumé feedbacks semaine
    ════════════════════════════════════════════════════════════════ */
 
-import db from './db.js';
+import db from '../db.js';
 
 
 // ── Topics de notification ──
@@ -1067,4 +1067,5 @@ class State {
 const state = new State();
 
 export { state, TOPICS };
+
 export default state;
