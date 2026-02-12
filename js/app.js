@@ -24,7 +24,7 @@
      #/settings    → Paramètres
    ════════════════════════════════════════════════════════════════ */
 
-import { state, TOPICS } from './state.js';
+import { state, TOPICS } from './utils/state.js';
 
 // ── Imports dynamiques des écrans ──
 // Chaque écran est importé à la demande (lazy loading)
@@ -627,4 +627,5 @@ if (document.readyState === 'loading') {
 // ── Export pour accès global (navigation depuis les écrans) ──
 
 export { app, ROUTE_CONFIG };
+
 export default app;
