@@ -11,7 +11,7 @@
 // Route :       #/settings
 // ─────────────────────────────────────────────────────────
 
-import { State } from '../state.js';
+import state from '../state.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -87,6 +87,7 @@ export class SettingsScreen {
     this._boundClickHandler = null;
     this._boundChangeHandler = null;
     this._fileInputRef = null;
+    this._navigate = null;
   }
 
   // ── Lifecycle ──────────────────────────────────────────
@@ -96,7 +97,8 @@ export class SettingsScreen {
    * attache les événements.
    * @param {HTMLElement} container
    */
-  async render(container) {
+  async render(container, params = {}) {
+    this._navigate = params.navigateTo || null;
     this._container = container;
     await this._loadSettings();
 
@@ -114,12 +116,13 @@ export class SettingsScreen {
     this._settings = null;
     this._isProcessing = false;
     this._fileInputRef = null;
+    this._navigate = null;
   }
 
   // ── Chargement ─────────────────────────────────────────
 
   async _loadSettings() {
-    const user = await State.getUser();
+    const user = state.getProfile();
     this._settings = user?.settings || {
       soundEnabled: true,
       vibrationEnabled: true,
@@ -317,6 +320,7 @@ export class SettingsScreen {
       this._boundChangeHandler = null;
     }
     this._fileInputRef = null;
+    this._navigate = null;
   }
 
   _onContainerClick(event) {
@@ -364,7 +368,7 @@ export class SettingsScreen {
     input.setAttribute('aria-checked', String(input.checked));
 
     this._settings[settingKey] = newValue;
-    await State.updateSettings({ [settingKey]: newValue });
+    await state.updateSettings({ ...this._settings, [settingKey]: newValue });
 
     this._applyImmediateEffect(settingKey, newValue);
   }
@@ -398,8 +402,8 @@ export class SettingsScreen {
     this._isProcessing = true;
 
     try {
-      const { ExportManager } = await import('../utils/export.js');
-      await ExportManager.exportToJSON();
+      const { exportData } = await import('../utils/export.js');
+      await exportData();
       this._showToast('Données exportées avec succès.');
     } catch (error) {
       this._showToast('Erreur lors de l\'export.', 'error');
@@ -434,8 +438,7 @@ export class SettingsScreen {
       );
       if (!confirmed) return;
 
-      const { ExportManager } = await import('../utils/export.js');
-      await ExportManager.importFromJSON(data);
+      await state.importData(data);
 
       this._showToast('Données importées avec succès. Rechargement…');
       setTimeout(() => window.location.reload(), 1000);
@@ -512,8 +515,8 @@ export class SettingsScreen {
     this._isProcessing = true;
 
     try {
-      const { DB } = await import('../db.js');
-      await DB.clearAll();
+      const { default: db } = await import('../db.js');
+      await db.clearAll();
 
       this._showToast('Données supprimées. Rechargement…');
       setTimeout(() => window.location.reload(), 1000);
@@ -614,6 +617,12 @@ export class SettingsScreen {
   // ── Navigation ─────────────────────────────────────────
 
   _navigateTo(screen) {
+    if (typeof this._navigate === 'function') {
+      this._navigate(screen);
+      return;
+    }
     window.location.hash = `#/${screen}`;
   }
 }
+
+export default new SettingsScreen();
