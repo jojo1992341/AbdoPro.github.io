@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <!-- ════════════════════════════════════════════
+       AbdoPro — Application de Progression Abdominaux
+       Point d'entrée unique (SPA)
+       ════════════════════════════════════════════ -->
+  <meta charset="UTF-8">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="description"
+        content="Programme de progression abdominaux adaptatif basé sur la science du sport.">
+
+  <!-- ── PWA Meta ── -->
+  <meta name="theme-color"             content="#6366f1">
+  <meta name="apple-mobile-web-app-capable"           content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style"  content="black-translucent">
+  <meta name="apple-mobile-web-app-title"             content="AbdoPro">
+  <meta name="mobile-web-app-capable"  content="yes">
+
+  <title>AbdoPro — Progression Abdominaux</title>
+
+  <!-- ── Manifest & Icônes ── -->
+  <link rel="manifest"        href="manifest.json">
+  <link rel="icon"             href="favicon.ico">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+  <!-- ── Feuilles de styles (ordre intentionnel) ──
+       1. main.css       → Reset, variables CSS, layout global
+       2. components.css  → Composants UI réutilisables
+       3. themes.css      → Surcharges thème clair / sombre
+  -->
+  <link rel="stylesheet" href="css/main.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/themes.css">
+
+  <!-- ── CSS critique inline : écran de chargement ──
+       Affiché immédiatement avant le chargement des CSS externes.
+       Garantit un premier rendu visuel instantané. -->
+  <style>
+    .loading-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      z-index: 9999;
+      transition: opacity 0.3s ease-out;
+    }
+
+    .loading-screen[hidden] {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .loading-logo {
+      font-size: 4rem;
+      line-height: 1;
+    }
+
+    .loading-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+
+    .loading-spinner {
+      width: 32px;
+      height: 32px;
+      border: 3px solid rgba(99, 102, 241, 0.2);
+      border-top-color: #6366f1;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ════════════════════════════════════════════
+       SHELL APPLICATIF
+       Structure en 3 zones verticales :
+       1. Écran de chargement (masqué après init)
+       2. Conteneur d'écrans (zone principale)
+       3. Barre de navigation inférieure
+       ════════════════════════════════════════════ -->
+  <div id="app">
+
+    <!-- ── 1. Écran de chargement ──
+         Visible uniquement pendant l'initialisation de l'app
+         (ouverture DB, lecture état, détection premier lancement).
+         Masqué par app.js une fois l'init terminée. -->
+    <div id="app-loading" class="loading-screen" role="status" aria-label="Chargement de l'application">
+      <div class="loading-logo" aria-hidden="true">💪</div>
+      <div class="loading-title">AbdoPro</div>
+      <div class="loading-spinner" aria-hidden="true"></div>
+    </div>
+
+    <!-- ── 2. Conteneur d'écrans ──
+         Zone unique où chaque écran est injecté dynamiquement.
+         Le routeur (app.js) remplace le contenu selon le hash.
+         aria-live="polite" → lecteurs d'écran annoncent les changements. -->
+    <main id="screen-container"
+          class="screen-container"
+          role="main"
+          aria-live="polite">
+    </main>
+
+    <!-- ── 3. Barre de navigation inférieure ──
+         Visible uniquement sur : dashboard, history, settings.
+         Masquée sur : onboarding, test-max, session, feedback.
+         Chaque bouton porte un data-route utilisé par le routeur. -->
+    <nav id="bottom-nav"
+         class="bottom-nav"
+         role="navigation"
+         aria-label="Navigation principale"
+         hidden>
+
+      <button class="nav-item active"
+              data-route="dashboard"
+              type="button"
+              aria-label="Tableau de bord"
+              aria-current="page">
+        <span class="nav-icon" aria-hidden="true">🏠</span>
+        <span class="nav-label">Accueil</span>
+      </button>
+
+      <button class="nav-item"
+              data-route="history"
+              type="button"
+              aria-label="Historique et statistiques">
+        <span class="nav-icon" aria-hidden="true">📊</span>
+        <span class="nav-label">Stats</span>
+      </button>
+
+      <button class="nav-item"
+              data-route="settings"
+              type="button"
+              aria-label="Paramètres de l'application">
+        <span class="nav-icon" aria-hidden="true">⚙️</span>
+        <span class="nav-label">Réglages</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- ── Élément audio pour le son de fin de repos ──
+       Chargé une seule fois, joué par js/utils/notifications.js.
+       L'attribut preload="auto" garantit la disponibilité offline. -->
+  <audio id="beep-sound"
+         preload="auto"
+         src="assets/sounds/beep.mp3"
+         aria-hidden="true">
+  </audio>
+
+  <!-- ── Fallback sans JavaScript ── -->
+  <noscript>
+    <div style="padding:2rem;text-align:center;font-family:sans-serif;background:#0a0a0a;color:#e0e0e0;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;">
+      <h1>AbdoPro</h1>
+      <p>Cette application nécessite JavaScript pour fonctionner.</p>
+      <p>Veuillez activer JavaScript dans les paramètres de votre navigateur.</p>
+    </div>
+  </noscript>
+
+  <!-- ════════════════════════════════════════════
+       CHARGEMENT DES MODULES JAVASCRIPT
+       
+       Point d'entrée unique : app.js
+       Utilisation de type="module" (ES6 modules) pour :
+       - Import/export natif sans bundler
+       - Isolation de scope automatique
+       - Chargement différé (defer implicite)
+       
+       app.js importe tous les modules nécessaires :
+       db.js → state.js → algorithms/* → screens/* → utils/*
+       ════════════════════════════════════════════ -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
