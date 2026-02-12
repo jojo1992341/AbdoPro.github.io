@@ -12,7 +12,7 @@
 // Route :       #/history
 // ─────────────────────────────────────────────────────────
 
-import { DB } from '../db.js';
+import db from '../db.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -54,6 +54,7 @@ export class HistoryScreen {
     this._weeks = [];
     this._expandedWeeks = new Set();
     this._boundClickHandler = null;
+    this._navigate = null;
   }
 
   // ── Lifecycle ──────────────────────────────────────────
@@ -63,7 +64,8 @@ export class HistoryScreen {
    * attache les événements, lance les animations.
    * @param {HTMLElement} container
    */
-  async render(container) {
+  async render(container, params = {}) {
+    this._navigate = params.navigateTo || null;
     this._container = container;
     await this._loadData();
 
@@ -81,12 +83,13 @@ export class HistoryScreen {
     this._container = null;
     this._weeks = [];
     this._expandedWeeks.clear();
+    this._navigate = null;
   }
 
   // ── Chargement ─────────────────────────────────────────
 
   async _loadData() {
-    const rawWeeks = await DB.getAllWeeks() || [];
+    const rawWeeks = await db.getAllWeeks() || [];
     this._weeks = rawWeeks.sort((a, b) => a.weekNumber - b.weekNumber);
   }
 
@@ -500,6 +503,7 @@ export class HistoryScreen {
       this._container?.removeEventListener('click', this._boundClickHandler);
       this._boundClickHandler = null;
     }
+    this._navigate = null;
   }
 
   _onContainerClick(event) {
@@ -554,8 +558,8 @@ export class HistoryScreen {
    * Import dynamique du module d'export — chargé uniquement au clic.
    */
   async _onExport() {
-    const { ExportManager } = await import('../utils/export.js');
-    await ExportManager.exportToJSON();
+    const { exportData } = await import('../utils/export.js');
+    await exportData();
   }
 
   // ── Animations ─────────────────────────────────────────
@@ -616,6 +620,12 @@ export class HistoryScreen {
   // ── Navigation ─────────────────────────────────────────
 
   _navigateTo(screen) {
+    if (typeof this._navigate === 'function') {
+      this._navigate(screen);
+      return;
+    }
     window.location.hash = `#/${screen}`;
   }
 }
+
+export default new HistoryScreen();
