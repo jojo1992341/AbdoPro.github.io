@@ -3,8 +3,7 @@
    
    Responsabilité unique : séance d'entraînement active.
    ─────────────────────────────────────────────────────────────
-   CORRECTION : Déplacement de l'attachement des événements pour
-   éviter l'accumulation de listeners et les doublons de séries.
+   CORRECTION : Ajout d'espaces et de gap sur l'écran de résumé.
    ════════════════════════════════════════════════════════════════ */
 
 import state from '../state.js';
@@ -20,13 +19,6 @@ const SESSION_STATE = {
   SAVING:     'saving'
 };
 
-const TYPE_LABELS = {
-  ENDURANCE: 'Endurance', HYPERTROPHIE: 'Hypertrophie', FORCE: 'Force',
-  MIXTE: 'Mixte', DELOAD: 'Deload', DEBUTANT: 'Débutant',
-  RECOVERY: 'Récupération', MODERATE: 'Modéré', INTENSE: 'Intense',
-  LIGHT: 'Léger', ADAPTATIF: 'Adaptatif', STANDARD: 'Standard'
-};
-
 const SessionScreen = {
   _container: null,
   _navigateTo: null,
@@ -38,7 +30,6 @@ const SessionScreen = {
   _seriesDetail: [],
   _sessionStart: 0,
   _seriesStart: 0,
-  _partialReps: 0,
   _timerElements: null,
 
   async render(container, params) {
@@ -52,19 +43,13 @@ const SessionScreen = {
       return;
     }
 
-    // Réinitialisation stricte de l'état de la séance
     this._state = SESSION_STATE.READY;
     this._currentSeries = 1;
     this._seriesDetail = [];
     this._sessionStart = 0;
-    this._partialReps = 0;
 
     notifications.init();
-
-    // IMPORTANT : On attache les événements UNE SEULE FOIS ici
     this._attachEvents();
-    
-    // Premier rendu
     this._render();
   },
 
@@ -78,9 +63,6 @@ const SessionScreen = {
 
   _render() {
     if (!this._container) return;
-
-    // Le HTML change selon l'état, mais les événements sont gérés par délégation
-    // sur le conteneur parent qui, lui, ne change pas.
     switch (this._state) {
       case SESSION_STATE.READY:      this._container.innerHTML = this._buildReadyHTML(); break;
       case SESSION_STATE.EXERCISING: this._container.innerHTML = this._buildExercisingHTML(); break;
@@ -95,8 +77,6 @@ const SessionScreen = {
 
   _attachEvents() {
     const signal = this._abortController.signal;
-
-    // Délégation d'événement unique sur le conteneur
     this._container.addEventListener('click', (e) => {
       const target = e.target.closest('[data-action]');
       if (!target) return;
@@ -111,9 +91,6 @@ const SessionScreen = {
       case 'impossible':        this._onImpossible(); break;
       case 'skip-rest':         this._onSkipRest(); break;
       case 'go-feedback':       this._onGoFeedback(); break;
-      case 'partial-increment': this._adjustPartialReps(1); break;
-      case 'partial-decrement': this._adjustPartialReps(-1); break;
-      case 'save-failed':       this._onSaveFailed(target); break;
     }
   },
 
@@ -125,9 +102,7 @@ const SessionScreen = {
   },
 
   _onSeriesDone() {
-    // Évite les doubles clics accidentels
     if (this._state !== SESSION_STATE.EXERCISING) return;
-
     this._seriesDetail.push({
       seriesNumber: this._currentSeries,
       repsCompleted: this._plan.reps,
@@ -152,8 +127,6 @@ const SessionScreen = {
     this._state = SESSION_STATE.EXERCISING;
     this._render();
   },
-
-  /* --- Logique de construction HTML (inchangée mais nécessaire) --- */
 
   _buildReadyHTML() {
     return `
@@ -203,21 +176,26 @@ const SessionScreen = {
 
   _buildCompletedHTML() {
     const total = this._seriesDetail.reduce((sum, s) => sum + s.repsCompleted, 0);
+    const goal = this._plan.series * this._plan.reps;
     return `
       <div class="screen centered">
         <div class="text-3xl mb-4">🎉</div>
         <h1 class="text-2xl font-bold mb-6">Séance terminée !</h1>
         <div class="card w-full mb-8">
           <div class="card__body">
-            <div class="flex-between mb-2"><span>Objectif</span><span class="mono">${this._plan.series * this._plan.reps}</span></div>
-            <div class="flex-between"><span>Réalisé</span><span class="mono color-success font-bold">${total} reps</span></div>
+            <div class="flex-between gap-2 mb-3">
+              <span class="text-secondary">Objectif&nbsp;:</span>
+              <span class="mono font-semibold">${goal}&nbsp;reps</span>
+            </div>
+            <div class="flex-between gap-2">
+              <span class="text-secondary">Réalisé&nbsp;:</span>
+              <span class="mono color-success font-bold">${total}&nbsp;reps</span>
+            </div>
           </div>
         </div>
         <button class="btn btn-primary btn-lg btn-block" data-action="go-feedback">Continuer</button>
       </div>`;
   },
-
-  /* --- Helpers de support --- */
 
   _startRestTimer() {
     this._timer = new RestTimer({
