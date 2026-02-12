@@ -26,7 +26,7 @@
      destroy()                  → Nettoie timer, listeners, etc.
    ════════════════════════════════════════════════════════════════ */
 
-import state from '../state.js';
+import state from '../utils/state.js';
 import { RestTimer, TIMER_STATE } from '../utils/timer.js';
 import { updateTimerUI, getCircleCircumference } from '../utils/timer.js';
 import notifications from '../utils/notifications.js';
@@ -1049,5 +1049,6 @@ const SessionScreen = {
 
 
 // ── Export ──
+
 
 export default SessionScreen;
