@@ -44,7 +44,7 @@ const STATIC_ASSETS = [
   // ── Infrastructure JS ──
   './js/app.js',
   './js/db.js',
-  './js/state.js',
+  './js/utils/state.js',
 
   // ── Algorithmes ──
   './js/algorithms/engine.js',
@@ -176,4 +176,5 @@ self.addEventListener('fetch', (event) => {
           });
       })
   );
+
 });
