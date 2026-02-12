@@ -10,7 +10,7 @@
 // Route :      #/feedback
 // ─────────────────────────────────────────────────────────
 
-import state from '../state.js';
+import { state } from '../state.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -38,13 +38,12 @@ const STAGGER_DELAY_MS = 100;
 
 // ── Classe Principale ──────────────────────────────────────
 
-export class FeedbackScreen {
+class FeedbackScreen {
 
   constructor() {
     this._container = null;
     this._sessionData = null;
     this._isProcessing = false;
-    this._navigate = null;
     this._boundHandlers = new Map();
   }
 
@@ -53,19 +52,19 @@ export class FeedbackScreen {
   /**
    * Point d'entrée du rendu. Appelé par le routeur SPA.
    * @param {HTMLElement} container — Élément DOM parent dans lequel rendre l'écran.
+   * @param {Object} params — Paramètres passés par le routeur (incluant navigateTo).
    */
   async render(container, params = {}) {
-    this._navigate = params.navigateTo || null;
     this._container = container;
     this._sessionData = await this._loadCurrentSession();
 
     if (!this._sessionData) {
-      this._navigateTo('dashboard');
+      this._navigateTo('dashboard', params);
       return;
     }
 
     this._container.innerHTML = this._buildHTML();
-    this._attachEvents();
+    this._attachEvents(params);
     this._animateEntry();
   }
 
@@ -77,7 +76,6 @@ export class FeedbackScreen {
     this._container = null;
     this._sessionData = null;
     this._isProcessing = false;
-    this._navigate = null;
   }
 
   // ── Chargement des Données ─────────────────────────────
@@ -88,12 +86,11 @@ export class FeedbackScreen {
    * (pas de séance, ou feedback déjà donné).
    */
   async _loadCurrentSession() {
-    const user = state.getProfile();
-    if (!user) return null;
+    const profile = state.getProfile();
+    if (!profile) return null;
 
-    const session = state.getCurrentSessions().find(
-      (item) => item.dayNumber === user.currentDay
-    );
+    const sessions = state.getCurrentSessions();
+    const session = sessions.find(s => s.dayNumber === profile.currentDay);
 
     // Garde : pas de séance, ou feedback déjà enregistré
     if (!session || session.feedback) return null;
@@ -189,11 +186,11 @@ export class FeedbackScreen {
 
   // ── Gestion des Événements ─────────────────────────────
 
-  _attachEvents() {
+  _attachEvents(params = {}) {
     const buttons = this._container.querySelectorAll('[data-feedback]');
 
     buttons.forEach(button => {
-      const handler = (e) => this._onFeedbackSelected(e);
+      const handler = (e) => this._onFeedbackSelected(e, params);
       this._boundHandlers.set(button, handler);
       button.addEventListener('click', handler);
     });
@@ -210,7 +207,7 @@ export class FeedbackScreen {
    * Handler principal. Déclenché au clic sur un bouton de feedback.
    * Verrouille l'UI, persiste, et redirige vers le dashboard.
    */
-  async _onFeedbackSelected(event) {
+  async _onFeedbackSelected(event, params = {}) {
     if (this._isProcessing) return;
 
     const feedbackId = event.currentTarget.dataset.feedback;
@@ -224,31 +221,30 @@ export class FeedbackScreen {
     await this._persistFeedback(feedbackId, option.rir);
     await state.advanceDay();
 
-    setTimeout(() => this._navigateTo('dashboard'), REDIRECT_DELAY_MS);
+    setTimeout(() => this._navigateTo('dashboard', params), REDIRECT_DELAY_MS);
   }
 
   // ── Persistance ────────────────────────────────────────
 
   /**
-   * Enregistre le feedback à deux niveaux :
-   * 1. Sur la session individuelle (feedback + RIR + status)
-   * 2. Sur le résumé hebdomadaire (agrégation des feedbacks)
+   * Enregistre le feedback sur la session individuelle.
+   * state.saveSession() met également à jour le résumé hebdomadaire.
    */
   async _persistFeedback(feedbackId, rir) {
-    const user = state.getProfile();
-    const { currentWeek, currentDay } = user;
+    const profile = state.getProfile();
+    const { currentWeek, currentDay } = profile;
+
+    // Récupérer la séance existante pour la fusionner
+    const existingSession = this._sessionData;
 
     await state.saveSession({
-      ...(state.getCurrentSessions().find(
-        (item) => item.weekNumber === currentWeek && item.dayNumber === currentDay
-      ) || {}),
+      ...existingSession,
       weekNumber: currentWeek,
       dayNumber: currentDay,
       feedback: feedbackId,
       rirEstimated: rir,
       status: 'completed',
     });
-
   }
 
   // ── Contrôle de l'UI ──────────────────────────────────
@@ -302,13 +298,16 @@ export class FeedbackScreen {
 
   // ── Navigation ─────────────────────────────────────────
 
-  _navigateTo(screen) {
-    if (typeof this._navigate === 'function') {
-      this._navigate(screen);
-      return;
+  _navigateTo(screen, params = {}) {
+    if (typeof params.navigateTo === 'function') {
+      params.navigateTo(screen);
+    } else {
+      window.location.hash = `#/${screen}`;
     }
-    window.location.hash = `#/${screen}`;
   }
 }
+
+
+// ── Export singleton ──
 
 export default new FeedbackScreen();

@@ -8,7 +8,7 @@
 // les scores des algorithmes (barres horizontales triées),
 // et un bouton d'export des données.
 //
-// Dépendances : DB (js/db.js)
+// Dépendances : db (js/db.js)
 // Route :       #/history
 // ─────────────────────────────────────────────────────────
 
@@ -47,14 +47,13 @@ const ENTRY_STAGGER_MS = 80;
 
 // ── Classe Principale ──────────────────────────────────────
 
-export class HistoryScreen {
+class HistoryScreen {
 
   constructor() {
     this._container = null;
     this._weeks = [];
     this._expandedWeeks = new Set();
     this._boundClickHandler = null;
-    this._navigate = null;
   }
 
   // ── Lifecycle ──────────────────────────────────────────
@@ -63,10 +62,11 @@ export class HistoryScreen {
    * Point d'entrée. Charge les données, rend le HTML,
    * attache les événements, lance les animations.
    * @param {HTMLElement} container
+   * @param {Object} params — Paramètres passés par le routeur (incluant navigateTo).
    */
   async render(container, params = {}) {
-    this._navigate = params.navigateTo || null;
     this._container = container;
+    this._params = params;
     await this._loadData();
 
     this._container.innerHTML = this._buildHTML();
@@ -83,7 +83,7 @@ export class HistoryScreen {
     this._container = null;
     this._weeks = [];
     this._expandedWeeks.clear();
-    this._navigate = null;
+    this._params = null;
   }
 
   // ── Chargement ─────────────────────────────────────────
@@ -266,59 +266,62 @@ export class HistoryScreen {
         r="${CHART.dotRadius}"
         class="chart__dot"
         fill="var(--accent-primary, #6366f1)"
-        stroke="var(--bg-card, #16213e)"
-        stroke-width="2"
-      >
-        <title>Semaine ${d.week} : ${d.value} reps</title>
-      </circle>
+        aria-label="Semaine ${d.week} : ${d.value} reps"
+      />
     `).join('');
   }
 
-  _buildXLabels(dataPoints, xScale, svgHeight) {
+  _buildXLabels(dataPoints, xScale, viewBoxHeight) {
+    const y = viewBoxHeight - CHART.padding.bottom + 16;
     return dataPoints.map(d => `
       <text
         x="${xScale(d.week).toFixed(1)}"
-        y="${svgHeight - 5}"
+        y="${y}"
         class="chart__label chart__label--x"
         text-anchor="middle"
       >S${d.week}</text>
     `).join('');
   }
 
+  /**
+   * Calcule la longueur approximative de la polyligne.
+   * Utilisé pour l'animation stroke-dasharray.
+   */
   _computePolylineLength(dataPoints, xScale, yScale) {
     let length = 0;
     for (let i = 1; i < dataPoints.length; i++) {
-      const dx = xScale(dataPoints[i].week) - xScale(dataPoints[i - 1].week);
-      const dy = yScale(dataPoints[i].value) - yScale(dataPoints[i - 1].value);
-      length += Math.sqrt(dx * dx + dy * dy);
+      const x1 = xScale(dataPoints[i - 1].week);
+      const y1 = yScale(dataPoints[i - 1].value);
+      const x2 = xScale(dataPoints[i].week);
+      const y2 = yScale(dataPoints[i].value);
+      length += Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
     }
     return length;
   }
 
-  // ── Liste des Semaines (Accordion) ─────────────────────
+  // ── Liste des Semaines ─────────────────────────────────
 
   _buildWeekListSection() {
-    const reversed = [...this._weeks].reverse();
+    if (this._weeks.length === 0) return '';
 
     return `
-      <section class="history__weeks" aria-label="Historique détaillé">
-        <h2 class="section__title">
-          <span aria-hidden="true">📋</span> Historique détaillé
+      <section class="card card--weeks" aria-label="Détail par semaine">
+        <h2 class="card__subtitle">
+          <span aria-hidden="true">📅</span> Semaines
         </h2>
-        <div class="weeks__list" role="list">
-          ${reversed.map(w => this._buildWeekItem(w)).join('')}
-        </div>
+        <ul class="week-list" role="list">
+          ${[...this._weeks].reverse().map(w => this._buildWeekItem(w)).join('')}
+        </ul>
       </section>
     `;
   }
 
   _buildWeekItem(week) {
     const isExpanded = this._expandedWeeks.has(week.weekNumber);
-    const progressStr = this._formatWeekProgress(week);
-    const algoMeta = ALGO_META[week.selectedAlgorithm] || { label: '—', color: '#888' };
+    const fb = week.feedbackSummary || {};
 
     return `
-      <div class="week-item card" role="listitem">
+      <li class="week-item" role="listitem">
         <button
           class="week-item__header"
           data-action="toggle-week"
@@ -328,9 +331,11 @@ export class HistoryScreen {
           aria-controls="week-detail-${week.weekNumber}"
         >
           <span class="week-item__title">Semaine ${week.weekNumber}</span>
-          <span class="week-item__summary">
+          <span class="week-item__meta">
             ${week.testMax != null ? `${week.testMax} reps` : '—'}
-            ${progressStr ? ` (${progressStr})` : ''}
+            ${this._formatWeekProgress(week)
+              ? `<span class="progress-badge">${this._formatWeekProgress(week)}</span>`
+              : ''}
           </span>
           <span class="week-item__chevron ${isExpanded ? 'week-item__chevron--open' : ''}"
                 aria-hidden="true">▶</span>
@@ -341,27 +346,26 @@ export class HistoryScreen {
           class="week-item__detail ${isExpanded ? 'week-item__detail--open' : ''}"
           ${isExpanded ? '' : 'hidden'}
         >
-          ${this._buildWeekDetail(week, algoMeta)}
+          ${this._buildWeekDetail(week, fb)}
         </div>
-      </div>
+      </li>
     `;
   }
 
-  _buildWeekDetail(week, algoMeta) {
-    const fb = week.feedbackSummary || {};
-    const algoScore = week.algorithmScores?.[week.selectedAlgorithm];
-
+  _buildWeekDetail(week, fb) {
     return `
       <dl class="week-detail">
         <div class="week-detail__row">
           <dt>Algorithme</dt>
+          <dd>${ALGO_META[week.selectedAlgorithm]?.label ?? week.selectedAlgorithm ?? '—'}</dd>
+        </div>
+
+        <div class="week-detail__row">
+          <dt>RIR moyen</dt>
           <dd>
-            <span class="algo-badge" style="--algo-color: ${algoMeta.color}">
-              ${algoMeta.label}
-            </span>
-            ${algoScore != null
-              ? `<span class="algo-score">(${algoScore.toFixed(1)})</span>`
-              : ''}
+            ${fb.rirMoyen != null
+              ? fb.rirMoyen.toFixed(1)
+              : '—'}
           </dd>
         </div>
 
@@ -503,7 +507,6 @@ export class HistoryScreen {
       this._container?.removeEventListener('click', this._boundClickHandler);
       this._boundClickHandler = null;
     }
-    this._navigate = null;
   }
 
   _onContainerClick(event) {
@@ -558,8 +561,8 @@ export class HistoryScreen {
    * Import dynamique du module d'export — chargé uniquement au clic.
    */
   async _onExport() {
-    const { exportData } = await import('../utils/export.js');
-    await exportData();
+    const { ExportManager } = await import('../utils/export.js');
+    await ExportManager.exportToJSON();
   }
 
   // ── Animations ─────────────────────────────────────────
@@ -620,12 +623,15 @@ export class HistoryScreen {
   // ── Navigation ─────────────────────────────────────────
 
   _navigateTo(screen) {
-    if (typeof this._navigate === 'function') {
-      this._navigate(screen);
-      return;
+    if (this._params && typeof this._params.navigateTo === 'function') {
+      this._params.navigateTo(screen);
+    } else {
+      window.location.hash = `#/${screen}`;
     }
-    window.location.hash = `#/${screen}`;
   }
 }
+
+
+// ── Export singleton ──
 
 export default new HistoryScreen();

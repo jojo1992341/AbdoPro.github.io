@@ -6,12 +6,12 @@
 // de données (export/import/reset), et affiche les crédits
 // scientifiques. Aucune logique métier d'entraînement ici.
 //
-// Dépendances : State (js/state.js)
-//               ExportManager, DB — chargés dynamiquement
+// Dépendances : state (js/state.js)
+//               ExportManager, db — chargés dynamiquement
 // Route :       #/settings
 // ─────────────────────────────────────────────────────────
 
-import state from '../state.js';
+import { state } from '../state.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -78,7 +78,7 @@ const ENTRY_STAGGER_MS = 60;
 
 // ── Classe Principale ──────────────────────────────────────
 
-export class SettingsScreen {
+class SettingsScreen {
 
   constructor() {
     this._container = null;
@@ -87,7 +87,7 @@ export class SettingsScreen {
     this._boundClickHandler = null;
     this._boundChangeHandler = null;
     this._fileInputRef = null;
-    this._navigate = null;
+    this._params = null;
   }
 
   // ── Lifecycle ──────────────────────────────────────────
@@ -96,10 +96,11 @@ export class SettingsScreen {
    * Point d'entrée. Charge les paramètres, rend le HTML,
    * attache les événements.
    * @param {HTMLElement} container
+   * @param {Object} params — Paramètres passés par le routeur (incluant navigateTo).
    */
   async render(container, params = {}) {
-    this._navigate = params.navigateTo || null;
     this._container = container;
+    this._params = params;
     await this._loadSettings();
 
     this._container.innerHTML = this._buildHTML();
@@ -116,14 +117,14 @@ export class SettingsScreen {
     this._settings = null;
     this._isProcessing = false;
     this._fileInputRef = null;
-    this._navigate = null;
+    this._params = null;
   }
 
   // ── Chargement ─────────────────────────────────────────
 
   async _loadSettings() {
-    const user = state.getProfile();
-    this._settings = user?.settings || {
+    const profile = state.getProfile();
+    this._settings = profile?.settings || {
       soundEnabled: true,
       vibrationEnabled: true,
       theme: 'dark',
@@ -320,7 +321,6 @@ export class SettingsScreen {
       this._boundChangeHandler = null;
     }
     this._fileInputRef = null;
-    this._navigate = null;
   }
 
   _onContainerClick(event) {
@@ -350,7 +350,7 @@ export class SettingsScreen {
 
   /**
    * Réagit au changement d'un toggle.
-   * Met à jour le setting dans State ET applique l'effet
+   * Met à jour le setting dans state ET applique l'effet
    * immédiat correspondant (ex: thème).
    */
   async _onToggleChange(event) {
@@ -368,7 +368,7 @@ export class SettingsScreen {
     input.setAttribute('aria-checked', String(input.checked));
 
     this._settings[settingKey] = newValue;
-    await state.updateSettings({ ...this._settings, [settingKey]: newValue });
+    await state.updateSettings({ [settingKey]: newValue });
 
     this._applyImmediateEffect(settingKey, newValue);
   }
@@ -402,8 +402,8 @@ export class SettingsScreen {
     this._isProcessing = true;
 
     try {
-      const { exportData } = await import('../utils/export.js');
-      await exportData();
+      const { ExportManager } = await import('../utils/export.js');
+      await ExportManager.exportToJSON();
       this._showToast('Données exportées avec succès.');
     } catch (error) {
       this._showToast('Erreur lors de l\'export.', 'error');
@@ -438,7 +438,8 @@ export class SettingsScreen {
       );
       if (!confirmed) return;
 
-      await state.importData(data);
+      const { ExportManager } = await import('../utils/export.js');
+      await ExportManager.importFromJSON(data);
 
       this._showToast('Données importées avec succès. Rechargement…');
       setTimeout(() => window.location.reload(), 1000);
@@ -515,7 +516,7 @@ export class SettingsScreen {
     this._isProcessing = true;
 
     try {
-      const { default: db } = await import('../db.js');
+      const { db } = await import('../db.js');
       await db.clearAll();
 
       this._showToast('Données supprimées. Rechargement…');
@@ -617,12 +618,15 @@ export class SettingsScreen {
   // ── Navigation ─────────────────────────────────────────
 
   _navigateTo(screen) {
-    if (typeof this._navigate === 'function') {
-      this._navigate(screen);
-      return;
+    if (this._params && typeof this._params.navigateTo === 'function') {
+      this._params.navigateTo(screen);
+    } else {
+      window.location.hash = `#/${screen}`;
     }
-    window.location.hash = `#/${screen}`;
   }
 }
+
+
+// ── Export singleton ──
 
 export default new SettingsScreen();
