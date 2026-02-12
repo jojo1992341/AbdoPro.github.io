@@ -1,0 +1,305 @@
+/* ════════════════════════════════════════════════════════════════
+   AbdoPro — themes.css
+   
+   Responsabilité unique : surcharges de thème.
+   ─────────────────────────────────────────────────────────────
+   Contenu (dans l'ordre) :
+     1. Thème clair — Variables de couleur
+     2. Thème clair — Ajustements de composants
+     3. Détection automatique du thème OS
+     4. Transitions de changement de thème
+   ─────────────────────────────────────────────────────────────
+   Le thème SOMBRE est défini dans main.css (:root).
+   Ce fichier ne contient QUE les surcharges nécessaires
+   pour le thème clair et la détection automatique.
+   
+   Le thème est activé via l'attribut [data-theme] sur <html> :
+   - data-theme="dark"  → thème sombre (défaut, variables de main.css)
+   - data-theme="light" → thème clair (surcharges ci-dessous)
+   
+   Le toggle est géré par js/screens/settings.js qui modifie
+   l'attribut et persiste le choix dans IndexedDB.
+   ════════════════════════════════════════════════════════════════ */
+
+
+/* ──────────────────────────────────────────────────────────────
+   1. THÈME CLAIR — VARIABLES DE COULEUR
+   
+   Seules les variables qui CHANGENT sont redéclarées.
+   Les variables identiques (accent-primary, radius, etc.)
+   sont héritées de :root dans main.css.
+   ────────────────────────────────────────────────────────────── */
+
+[data-theme="light"] {
+  /* ── Couleurs de fond ── */
+  --bg-primary:     #f8fafc;
+  --bg-secondary:   #e2e8f0;
+  --bg-card:        #ffffff;
+  --bg-input:       #f1f5f9;
+  --bg-overlay:     rgba(0, 0, 0, 0.4);
+
+  /* ── Couleurs de texte ── */
+  --text-primary:   #1e293b;
+  --text-secondary: #64748b;
+  --text-muted:     #94a3b8;
+  --text-inverse:   #f8fafc;
+
+  /* ── Accents — subtils (fonds transparents) ──
+       Les couleurs principales restent identiques.
+       Seuls les fonds "subtle" sont ajustés pour être
+       visibles sur fond clair. */
+  --accent-primary-subtle:  rgba(99, 102, 241, 0.10);
+  --accent-success-subtle:  rgba(34, 197, 94, 0.10);
+  --accent-warning-subtle:  rgba(245, 158, 11, 0.10);
+  --accent-danger-subtle:   rgba(239, 68, 68, 0.10);
+  --accent-info-subtle:     rgba(59, 130, 246, 0.10);
+
+  /* ── Ombres ──
+       Plus légères et plus diffuses sur fond clair.
+       Utilisent du noir avec moins d'opacité. */
+  --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-card:   0 1px 3px rgba(0, 0, 0, 0.08),
+                   0 1px 2px -1px rgba(0, 0, 0, 0.06);
+  --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-lg:     0 10px 15px -3px rgba(0, 0, 0, 0.08),
+                   0 4px 6px -4px rgba(0, 0, 0, 0.06);
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   2. THÈME CLAIR — AJUSTEMENTS DE COMPOSANTS
+   
+   Certains composants nécessitent des ajustements
+   au-delà du simple changement de variable.
+   On cible les cas où les bordures, opacités ou
+   couleurs de texte sur fond coloré doivent changer.
+   ────────────────────────────────────────────────────────────── */
+
+/* ── Navigation inférieure ── */
+[data-theme="light"] .bottom-nav {
+  border-top-color: rgba(0, 0, 0, 0.08);
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Bouton ghost ── */
+[data-theme="light"] .btn-ghost {
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .btn-ghost:active:not(:disabled) {
+  border-color: var(--accent-primary);
+}
+
+/* ── Boutons +/− du num-input ── */
+[data-theme="light"] .num-input__btn {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ── Cards ── */
+[data-theme="light"] .card {
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-left-width: 4px;
+}
+
+/* ── Feedback buttons ── */
+[data-theme="light"] .feedback-btn {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* ── Toggle slider ── */
+[data-theme="light"] .toggle__slider {
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .toggle__slider::after {
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Séparateurs et bordures internes ── */
+[data-theme="light"] .detail-item {
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .card__footer {
+  border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"] .screen-divider {
+  background-color: var(--bg-secondary);
+}
+
+/* ── Séries recap ── */
+[data-theme="light"] .series-item {
+  background-color: var(--bg-secondary);
+}
+
+/* ── Accordéon ── */
+[data-theme="light"] .accordion__content {
+  background-color: var(--bg-secondary);
+}
+
+/* ── Timer track ── */
+[data-theme="light"] .timer__track {
+  stroke: var(--bg-secondary);
+}
+
+/* ── Score bar track ── */
+[data-theme="light"] .score-bar__track {
+  background-color: var(--bg-secondary);
+}
+
+/* ── Indicateurs de jours ── */
+[data-theme="light"] .week-day--pending .week-day__icon {
+  background-color: var(--bg-secondary);
+}
+
+[data-theme="light"] .week-day--current .week-day__icon {
+  background-color: var(--accent-primary-subtle);
+}
+
+/* ── Slide dots ── */
+[data-theme="light"] .slide-dot {
+  background-color: var(--bg-secondary);
+}
+
+/* ── Toast — ombres plus visibles sur fond clair ── */
+[data-theme="light"] .toast {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Écran de chargement ──
+     Surcharge les styles inline de index.html
+     une fois que themes.css est chargé. */
+[data-theme="light"] .loading-screen {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ── Badge muted ── */
+[data-theme="light"] .badge--muted {
+  background-color: rgba(148, 163, 184, 0.15);
+}
+
+/* ── Progress bar ── */
+[data-theme="light"] .progress {
+  background-color: var(--bg-secondary);
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   3. DÉTECTION AUTOMATIQUE DU THÈME OS
+   
+   Si l'utilisateur n'a pas encore choisi de thème
+   dans les paramètres (data-theme="auto"), on utilise
+   la préférence système via prefers-color-scheme.
+   
+   Le JS (settings.js) peut définir data-theme="auto"
+   pour activer ce comportement.
+   ────────────────────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: light) {
+  [data-theme="auto"] {
+    /* ── Couleurs de fond ── */
+    --bg-primary:     #f8fafc;
+    --bg-secondary:   #e2e8f0;
+    --bg-card:        #ffffff;
+    --bg-input:       #f1f5f9;
+    --bg-overlay:     rgba(0, 0, 0, 0.4);
+
+    /* ── Couleurs de texte ── */
+    --text-primary:   #1e293b;
+    --text-secondary: #64748b;
+    --text-muted:     #94a3b8;
+    --text-inverse:   #f8fafc;
+
+    /* ── Accents subtils ── */
+    --accent-primary-subtle:  rgba(99, 102, 241, 0.10);
+    --accent-success-subtle:  rgba(34, 197, 94, 0.10);
+    --accent-warning-subtle:  rgba(245, 158, 11, 0.10);
+    --accent-danger-subtle:   rgba(239, 68, 68, 0.10);
+    --accent-info-subtle:     rgba(59, 130, 246, 0.10);
+
+    /* ── Ombres ── */
+    --shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-card:   0 1px 3px rgba(0, 0, 0, 0.08),
+                     0 1px 2px -1px rgba(0, 0, 0, 0.06);
+    --shadow-button: 0 1px 2px rgba(0, 0, 0, 0.06);
+    --shadow-lg:     0 10px 15px -3px rgba(0, 0, 0, 0.08),
+                     0 4px 6px -4px rgba(0, 0, 0, 0.06);
+  }
+}
+
+/* ── Ajustements composants pour le mode auto + light ── */
+@media (prefers-color-scheme: light) {
+  [data-theme="auto"] .bottom-nav {
+    border-top-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.06);
+  }
+
+  [data-theme="auto"] .btn-ghost {
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+
+  [data-theme="auto"] .num-input__btn {
+    border-color: rgba(0, 0, 0, 0.1);
+  }
+
+  [data-theme="auto"] .card {
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-left-width: 4px;
+  }
+
+  [data-theme="auto"] .feedback-btn {
+    border-color: rgba(0, 0, 0, 0.1);
+  }
+
+  [data-theme="auto"] .toggle__slider {
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+
+  [data-theme="auto"] .toggle__slider::after {
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  }
+
+  [data-theme="auto"] .detail-item {
+    border-bottom-color: rgba(0, 0, 0, 0.06);
+  }
+
+  [data-theme="auto"] .card__footer {
+    border-top-color: rgba(0, 0, 0, 0.06);
+  }
+
+  [data-theme="auto"] .loading-screen {
+    background: #f8fafc;
+    color: #1e293b;
+  }
+
+  [data-theme="auto"] .toast {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+}
+
+
+/* ──────────────────────────────────────────────────────────────
+   4. TRANSITIONS DE CHANGEMENT DE THÈME
+   
+   Quand l'utilisateur bascule le thème dans les paramètres,
+   on applique une transition douce sur les couleurs.
+   
+   La classe .theme-transitioning est ajoutée par settings.js
+   pendant 300ms lors du changement de thème, pour que la
+   transition soit visible mais pas omniprésente (ce qui
+   causerait des performances dégradées au scroll).
+   ────────────────────────────────────────────────────────────── */
+
+.theme-transitioning,
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition: background-color 300ms ease-out,
+              color 300ms ease-out,
+              border-color 300ms ease-out,
+              box-shadow 300ms ease-out !important;
+}
