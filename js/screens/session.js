@@ -3,11 +3,12 @@
    
    Responsabilité unique : séance d'entraînement active.
    ─────────────────────────────────────────────────────────────
-   CORRECTION : Ajout d'espaces et de gap sur l'écran de résumé.
+   CORRECTION : Restauration complète du bouton "Impossible"
+   et de la saisie des répétitions partielles.
    ════════════════════════════════════════════════════════════════ */
 
 import state from '../state.js';
-import { RestTimer, updateTimerUI, getCircleCircumference } from '../utils/timer.js';
+import { RestTimer, updateTimerUI } from '../utils/timer.js';
 import notifications from '../utils/notifications.js';
 
 const SESSION_STATE = {
@@ -30,6 +31,7 @@ const SessionScreen = {
   _seriesDetail: [],
   _sessionStart: 0,
   _seriesStart: 0,
+  _partialReps: 0,
   _timerElements: null,
 
   async render(container, params) {
@@ -47,6 +49,7 @@ const SessionScreen = {
     this._currentSeries = 1;
     this._seriesDetail = [];
     this._sessionStart = 0;
+    this._partialReps = 0;
 
     notifications.init();
     this._attachEvents();
@@ -58,7 +61,6 @@ const SessionScreen = {
     if (this._abortController) this._abortController.abort();
     this._timer = null;
     this._container = null;
-    this._seriesDetail = [];
   },
 
   _render() {
@@ -91,8 +93,13 @@ const SessionScreen = {
       case 'impossible':        this._onImpossible(); break;
       case 'skip-rest':         this._onSkipRest(); break;
       case 'go-feedback':       this._onGoFeedback(); break;
+      case 'partial-increment': this._adjustPartialReps(1); break;
+      case 'partial-decrement': this._adjustPartialReps(-1); break;
+      case 'save-failed':       this._onSaveFailed(target); break;
     }
   },
+
+  /* --- Logique des actions --- */
 
   _onStartSession() {
     this._sessionStart = Date.now();
@@ -119,14 +126,50 @@ const SessionScreen = {
     this._render();
   },
 
-  _onRestComplete() {
-    if (this._timer) this._timer.destroy();
-    this._timer = null;
-    this._currentSeries++;
-    this._seriesStart = Date.now();
-    this._state = SESSION_STATE.EXERCISING;
+  _onImpossible() {
+    this._state = SESSION_STATE.FAILED;
+    this._partialReps = Math.floor(this._plan.reps / 2);
+    notifications.notifyImpossible();
     this._render();
   },
+
+  _adjustPartialReps(delta) {
+    this._partialReps = Math.max(0, Math.min(this._plan.reps, this._partialReps + delta));
+    const valEl = this._container.querySelector('#partial-reps-value');
+    if (valEl) valEl.textContent = this._partialReps;
+  },
+
+  async _onSaveFailed(button) {
+    button.disabled = true;
+    this._state = SESSION_STATE.SAVING;
+    this._render();
+
+    const total = this._seriesDetail.reduce((sum, s) => sum + s.repsCompleted, 0) + this._partialReps;
+    
+    // Ajout de la série échouée au détail pour l'historique
+    this._seriesDetail.push({
+      seriesNumber: this._currentSeries,
+      repsCompleted: this._partialReps,
+      completed: false,
+      duration: Math.round((Date.now() - this._seriesStart) / 1000)
+    });
+
+    await state.saveSession({
+      weekNumber: state.getCurrentWeekNumber(),
+      dayNumber: state.getCurrentDayNumber(),
+      date: new Date().toISOString(),
+      type: 'training',
+      duration: Math.round((Date.now() - this._sessionStart) / 1000),
+      actual: { totalRepsCompleted: total, seriesDetail: this._seriesDetail },
+      feedback: 'impossible',
+      rirEstimated: 0,
+      status: 'completed'
+    });
+
+    this._navigateTo('dashboard');
+  },
+
+  /* --- Templates HTML --- */
 
   _buildReadyHTML() {
     return `
@@ -196,6 +239,40 @@ const SessionScreen = {
         <button class="btn btn-primary btn-lg btn-block" data-action="go-feedback">Continuer</button>
       </div>`;
   },
+
+  _buildFailedHTML() {
+    const completed = this._seriesDetail.reduce((sum, s) => sum + s.repsCompleted, 0);
+    return `
+      <div class="screen centered">
+        <header class="screen-header text-center">
+          <h1 class="screen-header__title">Échec Série ${this._currentSeries}</h1>
+          <p class="text-secondary text-sm">Combien de reps avez-vous pu faire ?</p>
+        </header>
+
+        <div class="num-input mb-8">
+          <button class="num-input__btn" data-action="partial-decrement">−</button>
+          <span class="num-input__value" id="partial-reps-value">${this._partialReps}</span>
+          <button class="num-input__btn" data-action="partial-increment">+</button>
+        </div>
+
+        <div class="card w-full mb-6">
+          <div class="card__body text-sm">
+            <div class="flex-between text-muted">
+              <span>Séries déjà validées</span>
+              <span class="mono">${completed} reps</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-lg btn-block" data-action="save-failed">Enregistrer et arrêter</button>
+      </div>`;
+  },
+
+  _buildSavingHTML() {
+    return `<div class="screen centered"><div class="loading-spinner"></div><p class="mt-4">Enregistrement...</p></div>`;
+  },
+
+  /* --- Utilitaires --- */
 
   _startRestTimer() {
     this._timer = new RestTimer({
