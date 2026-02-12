@@ -15,7 +15,7 @@
    params.navigateTo(route, data) → Fonction de navigation injectée par app.js
    ════════════════════════════════════════════════════════════════ */
 
-import state from '../state.js';
+import state from '../utils/state.js';
 import notifications from '../utils/notifications.js';
 
 
@@ -359,5 +359,6 @@ const OnboardingScreen = {
 
 
 // ── Export ──
+
 
 export default OnboardingScreen;
