@@ -22,7 +22,7 @@
      validateImportData(data)  → Valide la structure avant import
    ════════════════════════════════════════════════════════════════ */
 
-import state from '../state.js';
+import state from '../utils/state.js';
 
 
 // ── Constantes ──
@@ -568,4 +568,5 @@ export class ImportError extends Error {
       'DUPLICATE_SESSIONS'
     ].includes(this.code);
   }
+
 }
