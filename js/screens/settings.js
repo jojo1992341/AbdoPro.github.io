@@ -11,7 +11,7 @@
 // Route :       #/settings
 // ─────────────────────────────────────────────────────────
 
-import { State } from '../state.js';
+import { State } from '../utils/state.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -616,4 +616,5 @@ export class SettingsScreen {
   _navigateTo(screen) {
     window.location.hash = `#/${screen}`;
   }
+
 }
