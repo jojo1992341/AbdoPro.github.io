@@ -10,7 +10,7 @@
 // Route :      #/feedback
 // ─────────────────────────────────────────────────────────
 
-import { State } from '../state.js';
+import { State } from '../utils/state.js';
 
 // ── Configuration ──────────────────────────────────────────
 
@@ -296,4 +296,5 @@ export class FeedbackScreen {
   _navigateTo(screen) {
     window.location.hash = `#/${screen}`;
   }
+
 }
