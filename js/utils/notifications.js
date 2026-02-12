@@ -39,7 +39,7 @@
      notifications.isVibrationSupported() → Vibration disponible ?
    ════════════════════════════════════════════════════════════════ */
 
-import state from './utils/state.js';
+import state from './state.js';
 
 
 // ── Constantes ──
@@ -566,3 +566,4 @@ const notifications = new Notifications();
 export { notifications, VIBRATION_PATTERNS };
 
 export default notifications;
+
