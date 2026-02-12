@@ -3,8 +3,8 @@
    
    Responsabilité unique : séance d'entraînement active.
    ─────────────────────────────────────────────────────────────
-   CORRECTION : Restauration complète du bouton "Impossible"
-   et de la saisie des répétitions partielles.
+   CORRECTION : Fiabilisation de la fonction "Passer le repos"
+   et sécurisation des transitions d'états.
    ════════════════════════════════════════════════════════════════ */
 
 import state from '../state.js';
@@ -45,6 +45,7 @@ const SessionScreen = {
       return;
     }
 
+    // Reset de l'état local
     this._state = SESSION_STATE.READY;
     this._currentSeries = 1;
     this._seriesDetail = [];
@@ -57,9 +58,13 @@ const SessionScreen = {
   },
 
   destroy() {
-    if (this._timer) this._timer.destroy();
-    if (this._abortController) this._abortController.abort();
-    this._timer = null;
+    if (this._timer) {
+      this._timer.destroy();
+      this._timer = null;
+    }
+    if (this._abortController) {
+      this._abortController.abort();
+    }
     this._container = null;
   },
 
@@ -99,7 +104,7 @@ const SessionScreen = {
     }
   },
 
-  /* --- Logique des actions --- */
+  /* --- Logique des actions & Transitions --- */
 
   _onStartSession() {
     this._sessionStart = Date.now();
@@ -110,6 +115,7 @@ const SessionScreen = {
 
   _onSeriesDone() {
     if (this._state !== SESSION_STATE.EXERCISING) return;
+
     this._seriesDetail.push({
       seriesNumber: this._currentSeries,
       repsCompleted: this._plan.reps,
@@ -126,7 +132,35 @@ const SessionScreen = {
     this._render();
   },
 
+  _onSkipRest() {
+    // Sécurité : ne rien faire si on n'est pas en état de repos
+    if (this._state !== SESSION_STATE.RESTING) return;
+
+    // On force l'arrêt du timer s'il existe
+    if (this._timer) {
+      this._timer.destroy();
+      this._timer = null;
+    }
+
+    // On déclenche manuellement la transition vers la série suivante
+    this._onRestComplete();
+  },
+
+  _onRestComplete() {
+    // Si l'utilisateur a déjà cliqué sur "Passer", le timer peut être nul
+    if (this._timer) {
+      this._timer.destroy();
+      this._timer = null;
+    }
+
+    this._currentSeries++;
+    this._seriesStart = Date.now();
+    this._state = SESSION_STATE.EXERCISING;
+    this._render();
+  },
+
   _onImpossible() {
+    if (this._state !== SESSION_STATE.EXERCISING) return;
     this._state = SESSION_STATE.FAILED;
     this._partialReps = Math.floor(this._plan.reps / 2);
     notifications.notifyImpossible();
@@ -146,7 +180,6 @@ const SessionScreen = {
 
     const total = this._seriesDetail.reduce((sum, s) => sum + s.repsCompleted, 0) + this._partialReps;
     
-    // Ajout de la série échouée au détail pour l'historique
     this._seriesDetail.push({
       seriesNumber: this._currentSeries,
       repsCompleted: this._partialReps,
@@ -213,7 +246,7 @@ const SessionScreen = {
           </svg>
           <div class="timer__display"><span class="timer__time" id="timer-time">0:00</span></div>
         </div>
-        <button class="btn btn-ghost btn-block mt-8" data-action="skip-rest">⏭️ Passer</button>
+        <button class="btn btn-ghost btn-block mt-8" data-action="skip-rest">⏭️ Passer le repos</button>
       </div>`;
   },
 
@@ -248,22 +281,11 @@ const SessionScreen = {
           <h1 class="screen-header__title">Échec Série ${this._currentSeries}</h1>
           <p class="text-secondary text-sm">Combien de reps avez-vous pu faire ?</p>
         </header>
-
         <div class="num-input mb-8">
           <button class="num-input__btn" data-action="partial-decrement">−</button>
           <span class="num-input__value" id="partial-reps-value">${this._partialReps}</span>
           <button class="num-input__btn" data-action="partial-increment">+</button>
         </div>
-
-        <div class="card w-full mb-6">
-          <div class="card__body text-sm">
-            <div class="flex-between text-muted">
-              <span>Séries déjà validées</span>
-              <span class="mono">${completed} reps</span>
-            </div>
-          </div>
-        </div>
-
         <button class="btn btn-primary btn-lg btn-block" data-action="save-failed">Enregistrer et arrêter</button>
       </div>`;
   },
@@ -275,12 +297,16 @@ const SessionScreen = {
   /* --- Utilitaires --- */
 
   _startRestTimer() {
+    const settings = state.getSettings();
     this._timer = new RestTimer({
       duration: this._plan.rest,
       onTick: (data) => updateTimerUI(this._timerElements, data),
       onComplete: () => this._onRestComplete()
     });
-    this._timer.start();
+    
+    if (settings.restTimerAutoStart !== false) {
+      this._timer.start();
+    }
   },
 
   _cacheTimerElements() {
@@ -290,8 +316,6 @@ const SessionScreen = {
       timeText: this._container.querySelector('#timer-time')
     };
   },
-
-  _onSkipRest() { if (this._timer) this._timer.skip(); },
 
   async _onGoFeedback() {
     const total = this._seriesDetail.reduce((sum, s) => sum + s.repsCompleted, 0);
