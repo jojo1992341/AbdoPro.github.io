@@ -135,8 +135,11 @@ class AlgorithmScorer {
     if (actualTestMax > 0) {
       const currentWeek = this._getCurrentWeekFromHistory(scoringHistory);
       const currentPrediction = this._getCurrentPrediction(scoringHistory, algoName, currentWeek);
+      const alreadyScoredCurrentWeek = predictions.some(
+        entry => entry.week === currentWeek
+      );
 
-      if (currentPrediction !== null) {
+      if (currentPrediction !== null && !alreadyScoredCurrentWeek) {
         predictions.push({
           predicted: currentPrediction,
           actual: actualTestMax,
@@ -763,4 +766,5 @@ export {
   TEMPORAL_DECAY,
   PRECISION_PENALTY_FACTOR
 };
+
 export default AlgorithmScorer;
