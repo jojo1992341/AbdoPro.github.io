@@ -1,313 +1,177 @@
-// js/screens/feedback.js
-// ─────────────────────────────────────────────────────────
-// Écran de feedback post-séance.
-//
-// Affiché UNIQUEMENT après une séance complétée sans interruption.
-// Collecte le ressenti utilisateur (Facile / Parfait),
-// en déduit le RIR estimé, persiste, et avance au jour suivant.
-//
-// Dépendance : State (js/state.js)
-// Route :      #/feedback
-// ─────────────────────────────────────────────────────────
+/* ════════════════════════════════════════════════════════════════
+   AbdoPro — screens/feedback.js
+   
+   Responsabilité unique : collecte du ressenti post-séance.
+   ─────────────────────────────────────────────────────────────
+   Cet écran s'affiche après une séance réussie.
+   Il permet d'ajuster l'algorithme RIR (Repetitions In Reserve).
+   
+   Actions :
+   1. Affiche le résumé de la séance terminée.
+   2. Enregistre le feedback (facile / parfait).
+   3. Avance l'état global au jour suivant.
+   4. Redirige vers le tableau de bord.
+   ════════════════════════════════════════════════════════════════ */
 
-import { state } from '../state.js';
+import state from '../state.js';
 
-// ── Configuration ──────────────────────────────────────────
+const FeedbackScreen = {
+  _container: null,
+  _navigateTo: null,
+  _abortController: null,
+  _session: null,
+  _isProcessing: false,
 
-const FEEDBACK_OPTIONS = Object.freeze({
-  facile: {
-    id: 'facile',
-    emoji: '😊',
-    label: 'FACILE',
-    description: "J'aurais pu faire plus",
-    rir: 4,
-    cssModifier: 'easy',
-  },
-  parfait: {
-    id: 'parfait',
-    emoji: '👌',
-    label: 'PARFAIT',
-    description: 'Juste ce qu\'il faut',
-    rir: 2,
-    cssModifier: 'perfect',
-  },
-});
+  /* ──────────────────────────────────────────────────────────
+     RENDER
+     ────────────────────────────────────────────────────────── */
 
-const REDIRECT_DELAY_MS = 400;
-const STAGGER_DELAY_MS = 100;
-
-// ── Classe Principale ──────────────────────────────────────
-
-class FeedbackScreen {
-
-  constructor() {
-    this._container = null;
-    this._sessionData = null;
-    this._isProcessing = false;
-    this._boundHandlers = new Map();
-  }
-
-  // ── Lifecycle ──────────────────────────────────────────
-
-  /**
-   * Point d'entrée du rendu. Appelé par le routeur SPA.
-   * @param {HTMLElement} container — Élément DOM parent dans lequel rendre l'écran.
-   * @param {Object} params — Paramètres passés par le routeur (incluant navigateTo).
-   */
-  async render(container, params = {}) {
+  async render(container, params) {
     this._container = container;
-    this._sessionData = await this._loadCurrentSession();
+    this._navigateTo = params.navigateTo;
+    this._abortController = new AbortController();
+    this._isProcessing = false;
 
-    if (!this._sessionData) {
-      this._navigateTo('dashboard', params);
+    // Récupérer la séance qui vient d'être effectuée
+    const dayNumber = state.getCurrentDayNumber();
+    const sessions = state.getCurrentSessions();
+    this._session = sessions.find(s => s.dayNumber === dayNumber);
+
+    // Sécurité : si aucune séance trouvée ou déjà commentée, retour dashboard
+    if (!this._session || this._session.feedback) {
+      this._navigateTo('dashboard');
       return;
     }
 
-    this._container.innerHTML = this._buildHTML();
-    this._attachEvents(params);
-    this._animateEntry();
-  }
+    this._renderUI();
+  },
 
-  /**
-   * Nettoyage complet. Appelé par le routeur avant de quitter l'écran.
-   */
+  /* ──────────────────────────────────────────────────────────
+     DESTROY
+     ────────────────────────────────────────────────────────── */
+
   destroy() {
-    this._detachEvents();
+    if (this._abortController) {
+      this._abortController.abort();
+      this._abortController = null;
+    }
     this._container = null;
-    this._sessionData = null;
-    this._isProcessing = false;
-  }
+    this._navigateTo = null;
+    this._session = null;
+  },
 
-  // ── Chargement des Données ─────────────────────────────
+  /* ──────────────────────────────────────────────────────────
+     LOGIQUE INTERNE
+     ────────────────────────────────────────────────────────── */
 
-  /**
-   * Charge la séance courante depuis State.
-   * Retourne null si aucune séance éligible au feedback
-   * (pas de séance, ou feedback déjà donné).
-   */
-  async _loadCurrentSession() {
-    const profile = state.getProfile();
-    if (!profile) return null;
-
-    const sessions = state.getCurrentSessions();
-    const session = sessions.find(s => s.dayNumber === profile.currentDay);
-
-    // Garde : pas de séance, ou feedback déjà enregistré
-    if (!session || session.feedback) return null;
-
-    return session;
-  }
-
-  // ── Construction du HTML ───────────────────────────────
-
-  _buildHTML() {
-    const stats = this._computeStats();
-
-    return `
-      <div class="screen screen--feedback" role="main" aria-labelledby="feedback-title">
-
-        <header class="screen__header">
-          <h1 id="feedback-title" class="screen__title">
-            <span class="screen__title-icon" aria-hidden="true">✅</span>
-            Séance Terminée
-          </h1>
+  _renderUI() {
+    this._container.innerHTML = `
+      <div class="screen fullheight centered">
+        <header class="screen-header text-center">
+          <span class="screen-header__subtitle">Séance terminée</span>
+          <h1 class="screen-header__title">Bien joué ! 🎉</h1>
         </header>
 
-        <section class="card card--recap feedback__recap" aria-label="Récapitulatif de la séance">
-          <h2 class="card__subtitle">Récapitulatif</h2>
-          <p class="recap__formula">
-            ${stats.series} séries × ${stats.reps} reps
-            = <strong>${stats.totalReps} reps</strong>
-          </p>
-          <p class="recap__duration">
-            Durée : <strong>${stats.formattedDuration}</strong>
-          </p>
-        </section>
-
-        <section class="feedback__prompt" aria-label="Donnez votre ressenti">
-          <h2 class="feedback__question">Comment c'était ?</h2>
-          <div class="feedback__options" role="group" aria-label="Choix du ressenti">
-            ${this._buildButtons()}
+        <!-- Carte Récapitulative -->
+        <div class="card mb-8 w-full">
+          <div class="card__header">
+            <h2 class="card__title text-sm">Résumé de l'effort</h2>
           </div>
-        </section>
+          <div class="card__body">
+            <div class="flex-between">
+              <span class="text-secondary text-sm">Volume total</span>
+              <span class="mono font-bold">${this._session.actual.totalRepsCompleted} reps</span>
+            </div>
+            <div class="flex-between">
+              <span class="text-secondary text-sm">Durée</span>
+              <span class="mono">${this._formatDuration(this._session.duration)}</span>
+            </div>
+          </div>
+        </div>
 
+        <p class="text-center mb-6 font-semibold">Comment avez-vous trouvé cette séance ?</p>
+
+        <!-- Boutons de Feedback (Composants Section 9) -->
+        <div class="feedback-buttons">
+          <button class="feedback-btn feedback-btn--facile" data-feedback="facile" type="button">
+            <span class="feedback-btn__icon">😊</span>
+            <span class="feedback-btn__title">Facile</span>
+            <span class="feedback-btn__desc">J'en avais encore sous le coude</span>
+          </button>
+
+          <button class="feedback-btn feedback-btn--parfait" data-feedback="parfait" type="button">
+            <span class="feedback-btn__icon">👌</span>
+            <span class="feedback-btn__title">Parfait</span>
+            <span class="feedback-btn__desc">C'était le bon niveau d'effort</span>
+          </button>
+        </div>
       </div>
     `;
-  }
 
-  _buildButtons() {
-    return Object.values(FEEDBACK_OPTIONS)
-      .map(option => `
-        <button
-          class="btn btn--feedback btn--feedback-${option.cssModifier}"
-          data-feedback="${option.id}"
-          type="button"
-          aria-label="${option.label} — ${option.description}"
-        >
-          <span class="btn__emoji" aria-hidden="true">${option.emoji}</span>
-          <span class="btn__label">${option.label}</span>
-          <span class="btn__description">${option.description}</span>
-        </button>
-      `)
-      .join('');
-  }
+    this._attachEvents();
+  },
 
-  // ── Calcul des Statistiques de Séance ──────────────────
+  _attachEvents() {
+    const signal = this._abortController.signal;
 
-  _computeStats() {
-    const planned = this._sessionData.planned || {};
-    const actual = this._sessionData.actual || {};
-
-    const series = actual.completedSeries || planned.series || 0;
-    const reps = planned.reps || 0;
-    const totalReps = actual.totalRepsCompleted || (series * reps);
-
-    return {
-      series,
-      reps,
-      totalReps,
-      formattedDuration: this._formatDuration(this._sessionData.duration || 0),
-    };
-  }
-
-  /**
-   * Convertit une durée en secondes vers le format "M min SSs".
-   * @param {number} totalSeconds
-   * @returns {string}
-   */
-  _formatDuration(totalSeconds) {
-    if (!totalSeconds || totalSeconds <= 0) return '0 min 00s';
-
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-
-    return `${minutes} min ${String(seconds).padStart(2, '0')}s`;
-  }
-
-  // ── Gestion des Événements ─────────────────────────────
-
-  _attachEvents(params = {}) {
-    const buttons = this._container.querySelectorAll('[data-feedback]');
-
-    buttons.forEach(button => {
-      const handler = (e) => this._onFeedbackSelected(e, params);
-      this._boundHandlers.set(button, handler);
-      button.addEventListener('click', handler);
-    });
-  }
-
-  _detachEvents() {
-    this._boundHandlers.forEach((handler, button) => {
-      button.removeEventListener('click', handler);
-    });
-    this._boundHandlers.clear();
-  }
-
-  /**
-   * Handler principal. Déclenché au clic sur un bouton de feedback.
-   * Verrouille l'UI, persiste, et redirige vers le dashboard.
-   */
-  async _onFeedbackSelected(event, params = {}) {
-    if (this._isProcessing) return;
-
-    const feedbackId = event.currentTarget.dataset.feedback;
-    const option = FEEDBACK_OPTIONS[feedbackId];
-    if (!option) return;
-
-    this._isProcessing = true;
-    this._freezeButtons(event.currentTarget);
-    this._animateSelection(event.currentTarget);
-
-    await this._persistFeedback(feedbackId, option.rir);
-    await state.advanceDay();
-
-    setTimeout(() => this._navigateTo('dashboard', params), REDIRECT_DELAY_MS);
-  }
-
-  // ── Persistance ────────────────────────────────────────
-
-  /**
-   * Enregistre le feedback sur la session individuelle.
-   * state.saveSession() met également à jour le résumé hebdomadaire.
-   */
-  async _persistFeedback(feedbackId, rir) {
-    const profile = state.getProfile();
-    const { currentWeek, currentDay } = profile;
-
-    // Récupérer la séance existante pour la fusionner
-    const existingSession = this._sessionData;
-
-    await state.saveSession({
-      ...existingSession,
-      weekNumber: currentWeek,
-      dayNumber: currentDay,
-      feedback: feedbackId,
-      rirEstimated: rir,
-      status: 'completed',
-    });
-  }
-
-  // ── Contrôle de l'UI ──────────────────────────────────
-
-  /**
-   * Désactive tous les boutons et estompe les non-sélectionnés.
-   * Empêche le double-tap et donne un retour visuel immédiat.
-   */
-  _freezeButtons(selectedButton) {
-    this._container.querySelectorAll('[data-feedback]').forEach(btn => {
-      btn.disabled = true;
-      if (btn !== selectedButton) {
-        btn.classList.add('btn--faded');
+    this._container.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-feedback]');
+      if (btn && !this._isProcessing) {
+        this._handleFeedback(btn.dataset.feedback);
       }
-    });
-  }
-
-  // ── Animations ─────────────────────────────────────────
+    }, { signal });
+  },
 
   /**
-   * Animation d'entrée : fade-in + slide-up échelonné
-   * sur les éléments principaux de l'écran.
-   * Respecte prefers-reduced-motion via CSS.
+   * Traite le choix de l'utilisateur
+   * @param {string} type 'facile' | 'parfait'
    */
-  _animateEntry() {
-    const targets = this._container.querySelectorAll(
-      '.card, .feedback__question, .btn--feedback'
-    );
+  async _handleFeedback(type) {
+    this._isProcessing = true;
 
-    targets.forEach((el, index) => {
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(20px)';
-
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          el.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
-          el.style.opacity = '1';
-          el.style.transform = 'translateY(0)';
-        }, index * STAGGER_DELAY_MS);
-      });
+    // Animation visuelle de sélection
+    const btn = this._container.querySelector(`[data-feedback="${type}"]`);
+    btn.classList.add('feedback-btn--selected');
+    
+    // Désactiver l'autre bouton
+    this._container.querySelectorAll('.feedback-btn').forEach(b => {
+      if (b !== btn) b.style.opacity = '0.5';
     });
-  }
 
-  /**
-   * Animation de sélection : classe CSS déclenchant
-   * un effet bounce + checkmark (défini dans components.css).
-   */
-  _animateSelection(button) {
-    button.classList.add('btn--selected');
-  }
+    try {
+      // Calcul du RIR (Repetitions In Reserve)
+      // facile = 4 reps en réserve, parfait = 2 reps en réserve
+      const rir = type === 'facile' ? 4 : 2;
 
-  // ── Navigation ─────────────────────────────────────────
+      // Mise à jour de la séance avec le feedback
+      const updatedSession = {
+        ...this._session,
+        feedback: type,
+        rirEstimated: rir
+      };
 
-  _navigateTo(screen, params = {}) {
-    if (typeof params.navigateTo === 'function') {
-      params.navigateTo(screen);
-    } else {
-      window.location.hash = `#/${screen}`;
+      await state.saveSession(updatedSession);
+      
+      // Passage au jour suivant
+      await state.advanceDay();
+
+      // Redirection après un léger délai pour laisser l'animation respirer
+      setTimeout(() => {
+        this._navigateTo('dashboard');
+      }, 300);
+
+    } catch (error) {
+      console.error('Erreur lors de l\'enregistrement du feedback:', error);
+      this._isProcessing = false;
     }
+  },
+
+  _formatDuration(seconds) {
+    if (!seconds) return '0s';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
   }
-}
+};
 
-
-// ── Export singleton ──
-
-export default new FeedbackScreen();
+export default FeedbackScreen;

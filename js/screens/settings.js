@@ -1,632 +1,155 @@
-// js/screens/settings.js
-// ─────────────────────────────────────────────────────────
-// Paramètres de l'application.
-//
-// Gère les préférences utilisateur (toggles), les opérations
-// de données (export/import/reset), et affiche les crédits
-// scientifiques. Aucune logique métier d'entraînement ici.
-//
-// Dépendances : state (js/state.js)
-//               ExportManager, db — chargés dynamiquement
-// Route :       #/settings
-// ─────────────────────────────────────────────────────────
+/* ════════════════════════════════════════════════════════════════
+   AbdoPro — screens/settings.js
+   
+   Responsabilité unique : gestion des préférences et des données.
+   ─────────────────────────────────────────────────────────────
+   Contenu :
+   1. Préférences (Sons, Vibrations, Thème, Auto-start).
+   2. Gestion des données (Export JSON, Import, Reset complet).
+   3. Crédits scientifiques (Sources des algorithmes).
+   ════════════════════════════════════════════════════════════════ */
 
-import { state } from '../state.js';
+import state from '../state.js';
+import { exportData, importData } from '../utils/export.js';
 
-// ── Configuration ──────────────────────────────────────────
+const SettingsScreen = {
+  _container: null,
+  _abortController: null,
 
-const APP_VERSION = '1.0.0';
-
-const TOGGLES = Object.freeze([
-  {
-    key: 'soundEnabled',
-    icon: '🔊',
-    label: 'Son fin de repos',
-    description: 'Joue un bip à la fin du chronomètre de repos',
-  },
-  {
-    key: 'vibrationEnabled',
-    icon: '📳',
-    label: 'Vibration',
-    description: 'Vibre à la fin du chronomètre de repos',
-  },
-  {
-    key: 'theme',
-    icon: '🌙',
-    label: 'Thème sombre',
-    description: 'Bascule entre le thème clair et sombre',
-    isThemeToggle: true,
-  },
-  {
-    key: 'restTimerAutoStart',
-    icon: '⏱',
-    label: 'Auto-start repos',
-    description: 'Démarre le chronomètre automatiquement après une série',
-  },
-]);
-
-const SCIENTIFIC_CREDITS = Object.freeze([
-  {
-    algorithm: 'Progression Linéaire Périodisée',
-    source: 'Prilepin A.S. (1974)',
-    detail: 'Tables de Prilepin — plages optimales de volume en fonction de l\'intensité relative. Recherche soviétique en haltérophilie.',
-  },
-  {
-    algorithm: 'Surcompensation Exponentielle',
-    source: 'Banister E.W. (1975)',
-    detail: 'Modèle fitness-fatigue — "Training Theory and Methods". La performance est la différence entre fitness accumulée et fatigue résiduelle.',
-  },
-  {
-    algorithm: 'Periodisation Ondulatoire (DUP)',
-    source: 'Rhea M.R. et al. (2002)',
-    detail: '"A comparison of linear and daily undulating periodized programs with equated volume and intensity for strength." Journal of Strength and Conditioning Research.',
-  },
-  {
-    algorithm: 'Répétitions en Réserve (RIR)',
-    source: 'Zourdos M.C. et al. (2016)',
-    detail: '"Novel Resistance Training–Specific Rating of Perceived Exertion Scale Measuring Repetitions in Reserve." Journal of Strength and Conditioning Research.',
-  },
-  {
-    algorithm: 'Régression Adaptative (APRE)',
-    source: 'Mann J.B. et al. (2010)',
-    detail: '"The effect of autoregulatory progressive resistance exercise vs. linear periodization on strength improvement in college athletes." Journal of Strength and Conditioning Research.',
-  },
-]);
-
-const RESET_CONFIRMATION_TEXT = 'SUPPRIMER';
-const ENTRY_STAGGER_MS = 60;
-
-// ── Classe Principale ──────────────────────────────────────
-
-class SettingsScreen {
-
-  constructor() {
-    this._container = null;
-    this._settings = null;
-    this._isProcessing = false;
-    this._boundClickHandler = null;
-    this._boundChangeHandler = null;
-    this._fileInputRef = null;
-    this._params = null;
-  }
-
-  // ── Lifecycle ──────────────────────────────────────────
-
-  /**
-   * Point d'entrée. Charge les paramètres, rend le HTML,
-   * attache les événements.
-   * @param {HTMLElement} container
-   * @param {Object} params — Paramètres passés par le routeur (incluant navigateTo).
-   */
-  async render(container, params = {}) {
+  async render(container, params) {
     this._container = container;
-    this._params = params;
-    await this._loadSettings();
+    this._abortController = new AbortController();
 
-    this._container.innerHTML = this._buildHTML();
-    this._attachEvents();
-    this._animateEntry();
-  }
+    this._renderUI();
+  },
 
-  /**
-   * Nettoyage complet avant démontage par le routeur.
-   */
   destroy() {
-    this._detachEvents();
+    if (this._abortController) {
+      this._abortController.abort();
+    }
     this._container = null;
-    this._settings = null;
-    this._isProcessing = false;
-    this._fileInputRef = null;
-    this._params = null;
-  }
+  },
 
-  // ── Chargement ─────────────────────────────────────────
+  _renderUI() {
+    const settings = state.getSettings();
 
-  async _loadSettings() {
-    const profile = state.getProfile();
-    this._settings = profile?.settings || {
-      soundEnabled: true,
-      vibrationEnabled: true,
-      theme: 'dark',
-      restTimerAutoStart: true,
-    };
-  }
-
-  // ── Construction HTML — Structure Principale ───────────
-
-  _buildHTML() {
-    return `
-      <div class="screen screen--settings" role="main" aria-labelledby="settings-title">
-
-        <header class="screen__header">
-          <button class="btn btn--icon btn--back" data-action="back"
-                  type="button" aria-label="Retour au tableau de bord">←</button>
-          <h1 id="settings-title" class="screen__title">
-            <span aria-hidden="true">⚙</span> Paramètres
-          </h1>
+    this._container.innerHTML = `
+      <div class="screen">
+        <header class="screen-header">
+          <span class="screen-header__subtitle">Configuration</span>
+          <h1 class="screen-header__title">Réglages</h1>
         </header>
 
-        ${this._buildTogglesSection()}
-        ${this._buildDataSection()}
-        ${this._buildAboutSection()}
-        ${this._buildCreditsSection()}
+        <!-- 1. PRÉFÉRENCES (Composants Section 11) -->
+        <section class="card mb-6">
+          <div class="card__header">
+            <h3 class="card__title text-sm">Préférences</h3>
+          </div>
+          <div class="card__body">
+            ${this._buildToggle('soundEnabled', '🔊 Son fin de repos', settings.soundEnabled)}
+            ${this._buildToggle('vibrationEnabled', '📳 Vibrations', settings.vibrationEnabled)}
+            ${this._buildToggle('theme', '🌙 Thème Sombre', settings.theme === 'dark')}
+            ${this._buildToggle('restTimerAutoStart', '⏱️ Auto-start repos', settings.restTimerAutoStart)}
+          </div>
+        </section>
 
-      </div>
-    `;
-  }
+        <!-- 2. DONNÉES (Actions de maintenance) -->
+        <section class="card mb-6">
+          <div class="card__header">
+            <h3 class="card__title text-sm">Gestion des données</h3>
+          </div>
+          <div class="card__body gap-3">
+            <button class="btn btn-ghost btn-block" data-action="export">📤 Exporter (JSON)</button>
+            <button class="btn btn-ghost btn-block" data-action="import">📥 Importer (JSON)</button>
+            <button class="btn btn-danger btn-block" data-action="reset">⚠️ Réinitialiser l'application</button>
+          </div>
+        </section>
 
-  // ── Section Toggles ────────────────────────────────────
+        <!-- 3. CRÉDITS (Composants Section 17) -->
+        <details class="accordion mb-8">
+          <summary class="accordion__header">
+            <span class="accordion__title">ℹ️ Crédits scientifiques</span>
+            <span class="accordion__chevron">▶</span>
+          </summary>
+          <div class="accordion__content text-sm text-secondary">
+            <p class="mb-2"><strong>Prilepin (1974) :</strong> Gestion de l'intensité relative.</p>
+            <p class="mb-2"><strong>Banister (1975) :</strong> Modèle Fitness-Fatigue.</p>
+            <p class="mb-2"><strong>Rhea (2002) :</strong> Périodisation ondulatoire (DUP).</p>
+            <p class="mb-2"><strong>Zourdos (2016) :</strong> Répétitions en réserve (RIR).</p>
+            <p><strong>Mann (2010) :</strong> Régression APRE.</p>
+          </div>
+        </details>
 
-  _buildTogglesSection() {
-    return `
-      <section class="card card--toggles" aria-label="Préférences">
-        ${TOGGLES.map(toggle => this._buildToggleRow(toggle)).join('')}
-      </section>
-    `;
-  }
-
-  _buildToggleRow(toggle) {
-    const isChecked = this._resolveToggleState(toggle);
-    const inputId = `toggle-${toggle.key}`;
-
-    return `
-      <div class="toggle-row">
-        <label class="toggle-row__label" for="${inputId}">
-          <span class="toggle-row__icon" aria-hidden="true">${toggle.icon}</span>
-          <span class="toggle-row__text">
-            <span class="toggle-row__title">${toggle.label}</span>
-            <span class="toggle-row__description">${toggle.description}</span>
-          </span>
-        </label>
-        <div class="toggle-switch">
-          <input
-            type="checkbox"
-            id="${inputId}"
-            class="toggle-switch__input"
-            data-setting="${toggle.key}"
-            ${isChecked ? 'checked' : ''}
-            role="switch"
-            aria-checked="${isChecked}"
-          />
-          <span class="toggle-switch__slider" aria-hidden="true"></span>
+        <div class="text-center p-4">
+          <p class="text-muted text-xs">AbdoPro v4.6 — Open Source</p>
         </div>
       </div>
     `;
-  }
 
-  /**
-   * Résout l'état booléen d'un toggle.
-   * Cas spécial : le thème est "dark"/"light", pas un booléen.
-   */
-  _resolveToggleState(toggle) {
-    if (toggle.isThemeToggle) {
-      return this._settings.theme === 'dark';
-    }
-    return Boolean(this._settings[toggle.key]);
-  }
+    this._attachEvents();
+  },
 
-  // ── Section Données ────────────────────────────────────
-
-  _buildDataSection() {
+  _buildToggle(id, label, isChecked) {
     return `
-      <section class="card card--data" aria-label="Gestion des données">
-        <h2 class="card__subtitle">Données</h2>
-
-        <div class="data-actions">
-          <button class="btn btn--secondary btn--data"
-                  data-action="export" type="button">
-            <span aria-hidden="true">📤</span> Exporter (JSON)
-          </button>
-
-          <button class="btn btn--secondary btn--data"
-                  data-action="import-trigger" type="button">
-            <span aria-hidden="true">📥</span> Importer (JSON)
-          </button>
-          <input
-            type="file"
-            accept=".json,application/json"
-            class="data-actions__file-input visually-hidden"
-            aria-label="Sélectionner un fichier JSON à importer"
-            tabindex="-1"
-          />
-
-          <button class="btn btn--danger btn--data"
-                  data-action="reset" type="button">
-            <span aria-hidden="true">🗑</span> Réinitialiser
-          </button>
-        </div>
-      </section>
+      <label class="toggle">
+        <span class="toggle__label">${label}</span>
+        <input type="checkbox" class="toggle__input" data-setting="${id}" ${isChecked ? 'checked' : ''}>
+        <span class="toggle__slider"></span>
+      </label>
     `;
-  }
-
-  // ── Section À Propos ───────────────────────────────────
-
-  _buildAboutSection() {
-    return `
-      <section class="card card--about" aria-label="À propos">
-        <h2 class="card__subtitle">À propos</h2>
-        <dl class="about-list">
-          <div class="about-list__row">
-            <dt>Version</dt>
-            <dd>${APP_VERSION}</dd>
-          </div>
-          <div class="about-list__row">
-            <dt>Hébergement</dt>
-            <dd>GitHub Pages</dd>
-          </div>
-          <div class="about-list__row">
-            <dt>Stockage</dt>
-            <dd>Données stockées localement sur votre appareil</dd>
-          </div>
-        </dl>
-      </section>
-    `;
-  }
-
-  // ── Section Crédits Scientifiques ──────────────────────
-
-  _buildCreditsSection() {
-    return `
-      <section class="card card--credits" aria-label="Crédits scientifiques">
-        <button
-          class="credits__toggle"
-          data-action="toggle-credits"
-          type="button"
-          aria-expanded="false"
-          aria-controls="credits-panel"
-        >
-          <span aria-hidden="true">ℹ</span> Crédits scientifiques
-          <span class="credits__chevron" aria-hidden="true">▶</span>
-        </button>
-
-        <div id="credits-panel" class="credits__panel" hidden>
-          ${SCIENTIFIC_CREDITS.map(c => this._buildCreditItem(c)).join('')}
-        </div>
-      </section>
-    `;
-  }
-
-  _buildCreditItem(credit) {
-    return `
-      <article class="credit-item">
-        <h3 class="credit-item__algorithm">${credit.algorithm}</h3>
-        <p class="credit-item__source">${credit.source}</p>
-        <p class="credit-item__detail">${credit.detail}</p>
-      </article>
-    `;
-  }
-
-  // ── Gestion des Événements ─────────────────────────────
+  },
 
   _attachEvents() {
-    this._boundClickHandler = (e) => this._onContainerClick(e);
-    this._boundChangeHandler = (e) => this._onToggleChange(e);
+    const signal = this._abortController.signal;
 
-    this._container.addEventListener('click', this._boundClickHandler);
-    this._container.addEventListener('change', this._boundChangeHandler);
+    // Gestion des Toggles
+    this._container.addEventListener('change', async (e) => {
+      const input = e.target.closest('[data-setting]');
+      if (!input) return;
 
-    this._fileInputRef = this._container.querySelector('.data-actions__file-input');
-    if (this._fileInputRef) {
-      this._fileInputRef.addEventListener('change', (e) => this._onFileSelected(e));
-    }
+      const key = input.dataset.setting;
+      let value = input.checked;
+
+      // Cas spécial pour le thème (string au lieu de boolean)
+      if (key === 'theme') {
+        value = input.checked ? 'dark' : 'light';
+        document.documentElement.setAttribute('data-theme', value);
+      }
+
+      await state.updateSettings({ [key]: value });
+    }, { signal });
+
+    // Gestion des Actions (Boutons)
+    this._container.addEventListener('click', async (e) => {
+      const action = e.target.closest('[data-action]')?.dataset.action;
+      if (!action) return;
+
+      switch (action) {
+        case 'export':
+          await exportData();
+          break;
+        case 'import':
+          if (confirm("L'importation remplacera toutes vos données actuelles. Continuer ?")) {
+            try {
+              await importData();
+              window.location.reload();
+            } catch (err) {
+              alert("Erreur lors de l'importation : " + err.message);
+            }
+          }
+          break;
+        case 'reset':
+          if (confirm("⚠️ ATTENTION : Cela supprimera définitivement toute votre progression. Confirmer ?")) {
+            const safety = prompt("Tapez 'SUPPRIMER' pour valider.");
+            if (safety === 'SUPPRIMER') {
+              await state.reset();
+              window.location.reload();
+            }
+          }
+          break;
+      }
+    }, { signal });
   }
+};
 
-  _detachEvents() {
-    if (this._boundClickHandler) {
-      this._container?.removeEventListener('click', this._boundClickHandler);
-      this._boundClickHandler = null;
-    }
-    if (this._boundChangeHandler) {
-      this._container?.removeEventListener('change', this._boundChangeHandler);
-      this._boundChangeHandler = null;
-    }
-    this._fileInputRef = null;
-  }
-
-  _onContainerClick(event) {
-    const target = event.target.closest('[data-action]');
-    if (!target) return;
-
-    switch (target.dataset.action) {
-      case 'back':
-        this._navigateTo('dashboard');
-        break;
-      case 'export':
-        this._onExport();
-        break;
-      case 'import-trigger':
-        this._triggerFileInput();
-        break;
-      case 'reset':
-        this._onReset();
-        break;
-      case 'toggle-credits':
-        this._toggleCreditsPanel(target);
-        break;
-    }
-  }
-
-  // ── Toggles — Changement de Préférence ─────────────────
-
-  /**
-   * Réagit au changement d'un toggle.
-   * Met à jour le setting dans state ET applique l'effet
-   * immédiat correspondant (ex: thème).
-   */
-  async _onToggleChange(event) {
-    const input = event.target;
-    if (!input.matches('.toggle-switch__input')) return;
-
-    const settingKey = input.dataset.setting;
-    if (!settingKey) return;
-
-    const toggleConfig = TOGGLES.find(t => t.key === settingKey);
-    if (!toggleConfig) return;
-
-    const newValue = this._computeNewValue(toggleConfig, input.checked);
-
-    input.setAttribute('aria-checked', String(input.checked));
-
-    this._settings[settingKey] = newValue;
-    await state.updateSettings({ [settingKey]: newValue });
-
-    this._applyImmediateEffect(settingKey, newValue);
-  }
-
-  /**
-   * Calcule la nouvelle valeur d'un setting.
-   * Le thème est un cas spécial : checked=true → "dark", false → "light".
-   */
-  _computeNewValue(toggleConfig, isChecked) {
-    if (toggleConfig.isThemeToggle) {
-      return isChecked ? 'dark' : 'light';
-    }
-    return isChecked;
-  }
-
-  /**
-   * Applique les effets secondaires immédiats d'un changement de setting.
-   * Seul le thème a un effet visuel instantané. Les autres settings
-   * sont lus à la demande par les modules concernés (timer, notifications).
-   */
-  _applyImmediateEffect(settingKey, value) {
-    if (settingKey === 'theme') {
-      document.documentElement.setAttribute('data-theme', value);
-    }
-  }
-
-  // ── Export ─────────────────────────────────────────────
-
-  async _onExport() {
-    if (this._isProcessing) return;
-    this._isProcessing = true;
-
-    try {
-      const { ExportManager } = await import('../utils/export.js');
-      await ExportManager.exportToJSON();
-      this._showToast('Données exportées avec succès.');
-    } catch (error) {
-      this._showToast('Erreur lors de l\'export.', 'error');
-    } finally {
-      this._isProcessing = false;
-    }
-  }
-
-  // ── Import ─────────────────────────────────────────────
-
-  _triggerFileInput() {
-    if (this._fileInputRef) {
-      this._fileInputRef.value = '';
-      this._fileInputRef.click();
-    }
-  }
-
-  async _onFileSelected(event) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (this._isProcessing) return;
-    this._isProcessing = true;
-
-    try {
-      const text = await this._readFileAsText(file);
-      const data = this._parseAndValidateJSON(text);
-
-      const confirmed = await this._confirmAction(
-        'Importer des données',
-        'Cette action remplacera toutes vos données actuelles. Voulez-vous continuer ?'
-      );
-      if (!confirmed) return;
-
-      const { ExportManager } = await import('../utils/export.js');
-      await ExportManager.importFromJSON(data);
-
-      this._showToast('Données importées avec succès. Rechargement…');
-      setTimeout(() => window.location.reload(), 1000);
-
-    } catch (error) {
-      this._showToast(
-        error.message || 'Fichier invalide ou corrompu.',
-        'error'
-      );
-    } finally {
-      this._isProcessing = false;
-    }
-  }
-
-  /**
-   * Lit un fichier File en texte brut via FileReader (promisifié).
-   * @param {File} file
-   * @returns {Promise<string>}
-   */
-  _readFileAsText(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = () => reject(new Error('Impossible de lire le fichier.'));
-      reader.readAsText(file);
-    });
-  }
-
-  /**
-   * Parse et valide le JSON importé.
-   * Vérifie la présence des champs structurels obligatoires.
-   * @throws {Error} si la structure est invalide.
-   */
-  _parseAndValidateJSON(text) {
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      throw new Error('Le fichier n\'est pas un JSON valide.');
-    }
-
-    const requiredKeys = ['appVersion', 'user', 'weeks', 'sessions'];
-    const missingKeys = requiredKeys.filter(k => !(k in data));
-
-    if (missingKeys.length > 0) {
-      throw new Error(
-        `Format invalide. Champs manquants : ${missingKeys.join(', ')}.`
-      );
-    }
-
-    if (!Array.isArray(data.weeks) || !Array.isArray(data.sessions)) {
-      throw new Error('Les champs "weeks" et "sessions" doivent être des tableaux.');
-    }
-
-    return data;
-  }
-
-  // ── Reset ──────────────────────────────────────────────
-
-  async _onReset() {
-    if (this._isProcessing) return;
-
-    const firstConfirm = await this._confirmAction(
-      'Réinitialiser l\'application',
-      'Toutes vos données de progression seront définitivement supprimées.'
-    );
-    if (!firstConfirm) return;
-
-    const secondConfirm = await this._confirmDestructive(
-      `Pour confirmer, tapez "${RESET_CONFIRMATION_TEXT}" ci-dessous.`
-    );
-    if (!secondConfirm) return;
-
-    this._isProcessing = true;
-
-    try {
-      const { db } = await import('../db.js');
-      await db.clearAll();
-
-      this._showToast('Données supprimées. Rechargement…');
-      setTimeout(() => window.location.reload(), 1000);
-    } catch (error) {
-      this._showToast('Erreur lors de la réinitialisation.', 'error');
-    } finally {
-      this._isProcessing = false;
-    }
-  }
-
-  // ── Crédits Panel ──────────────────────────────────────
-
-  _toggleCreditsPanel(toggleButton) {
-    const panel = this._container.querySelector('#credits-panel');
-    const chevron = toggleButton.querySelector('.credits__chevron');
-    if (!panel) return;
-
-    const isOpen = !panel.hidden;
-
-    panel.hidden = isOpen;
-    toggleButton.setAttribute('aria-expanded', String(!isOpen));
-    chevron?.classList.toggle('credits__chevron--open', !isOpen);
-  }
-
-  // ── Dialogues de Confirmation ──────────────────────────
-
-  /**
-   * Confirmation simple via confirm() natif.
-   * Suffisant pour une PWA mobile — pas de dépendance UI modale.
-   * @returns {Promise<boolean>}
-   */
-  async _confirmAction(title, message) {
-    return window.confirm(`${title}\n\n${message}`);
-  }
-
-  /**
-   * Double confirmation destructive : demande à l'utilisateur
-   * de taper un mot spécifique pour valider.
-   * @returns {Promise<boolean>}
-   */
-  async _confirmDestructive(message) {
-    const input = window.prompt(message);
-    return input === RESET_CONFIRMATION_TEXT;
-  }
-
-  // ── Toast (Feedback Visuel) ────────────────────────────
-
-  /**
-   * Affiche un message temporaire en bas de l'écran.
-   * Créé dynamiquement, supprimé après 3s.
-   *
-   * @param {string} message
-   * @param {'success'|'error'} [type='success']
-   */
-  _showToast(message, type = 'success') {
-    const existing = this._container?.querySelector('.toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.className = `toast toast--${type}`;
-    toast.setAttribute('role', 'status');
-    toast.setAttribute('aria-live', 'polite');
-    toast.textContent = message;
-
-    this._container?.appendChild(toast);
-
-    requestAnimationFrame(() => {
-      toast.classList.add('toast--visible');
-    });
-
-    setTimeout(() => {
-      toast.classList.remove('toast--visible');
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
-  }
-
-  // ── Animations ─────────────────────────────────────────
-
-  _animateEntry() {
-    const targets = this._container.querySelectorAll(
-      '.card, .screen__header'
-    );
-
-    targets.forEach((el, i) => {
-      el.style.opacity = '0';
-      el.style.transform = 'translateY(16px)';
-
-      requestAnimationFrame(() => {
-        setTimeout(() => {
-          el.style.transition = 'opacity 0.3s ease-out, transform 0.3s ease-out';
-          el.style.opacity = '1';
-          el.style.transform = 'translateY(0)';
-        }, i * ENTRY_STAGGER_MS);
-      });
-    });
-  }
-
-  // ── Navigation ─────────────────────────────────────────
-
-  _navigateTo(screen) {
-    if (this._params && typeof this._params.navigateTo === 'function') {
-      this._params.navigateTo(screen);
-    } else {
-      window.location.hash = `#/${screen}`;
-    }
-  }
-}
-
-
-// ── Export singleton ──
-
-export default new SettingsScreen();
+export default SettingsScreen;
